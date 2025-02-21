@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeCloud Storage</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .loading {
+            @apply animate-spin h-5 w-5 border-4 border-blue-500 rounded-full border-t-transparent;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div id="app" class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-blue-600">DeCloud Storage</h1>
+            <div id="walletStatus" class="mt-4 flex items-center gap-4">
+                <button id="connectWallet" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
+                    Connect Wallet
+                </button>
+                <span id="walletAddress" class="hidden text-gray-600"></span>
+                <span id="tokenBalance" class="hidden text-gray-600"></span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Storage Provider Section -->
+            <section class="bg-white p-6 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Storage Provider Dashboard</h2>
+                <div id="providerForm" class="space-y-4">
+                    <div>
+                        <label class="block text-gray-700 mb-2">Storage Capacity (GB)</label>
+                        <input type="number" id="storageCapacity" class="w-full border p-2 rounded" min="1">
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2">Price per GB (AAI)</label>
+                        <input type="number" id="pricePerGB" class="w-full border p-2 rounded" min="0.1" step="0.1">
+                    </div>
+                    <button id="registerProvider" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 w-full">
+                        Register as Provider
+                    </button>
+                </div>
+            </section>
+
+            <!-- User Storage Section -->
+            <section class="bg-white p-6 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Store Files</h2>
+                <div id="uploadForm" class="space-y-4">
+                    <div class="border-2 border-dashed border-gray-300 p-8 text-center rounded-lg">
+                        <input type="file" id="fileInput" class="hidden">
+                        <label for="fileInput" class="cursor-pointer">
+                            <i class="bi bi-cloud-upload text-4xl text-blue-500"></i>
+                            <p class="mt-2 text-gray-600">Click to upload or drag files here</p>
+                        </label>
+                    </div>
+                    <button id="uploadButton" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 w-full">
+                        Upload File
+                    </button>
+                </div>
+            </section>
+
+            <!-- Transaction History -->
+            <section class="bg-white p-6 rounded-lg shadow md:col-span-2">
+                <h2 class="text-xl font-semibold mb-4">Transaction History</h2>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full">
+                        <thead>
+                            <tr class="bg-gray-50">
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hash</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactionHistory" class="bg-white divide-y divide-gray-200">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        const APP_SLUG = 'decloud-storage-123456';
+        let provider, signer, userAddress;
+
+        // Connect to MetaMask
+        async function connectWallet() {
+            try {
+                if (typeof window.ethereum !== 'undefined') {
+                    provider = new ethers.providers.Web3Provider(window.ethereum);
+                    await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    signer = provider.getSigner();
+                    userAddress = await signer.getAddress();
+                    
+                    document.getElementById('connectWallet').classList.add('hidden');
+                    document.getElementById('walletAddress').classList.remove('hidden');
+                    document.getElementById('walletAddress').textContent = `Connected: ${userAddress.substring(0,6)}...${userAddress.substring(38)}`;
+                    
+                    // Load user data
+                    loadUserData();
+                }
+            } catch (error) {
+                console.error('Error connecting wallet:', error);
+                alert('Failed to connect wallet');
+            }
+        }
+
+        // Register as Storage Provider
+        async function registerProvider() {
+            const capacity = document.getElementById('storageCapacity').value;
+            const price = document.getElementById('pricePerGB').value;
+            
+            if (!capacity || !price) {
+                alert('Please fill all fields');
+                return;
+            }
+
+            try {
+                const response = await fetch('https://r0c8kgwocscg8gsokogwwsw4.zetaverse.one/mongodb', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer BVmMGkKDhBctRIX0JXVvvUBInHG3',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        appSlug: APP_SLUG,
+                        action: 'create',
+                        collection: 'providers',
+                        data: {
+                            address: userAddress,
+                            capacity: Number(capacity),
+                            pricePerGB: Number(price),
+                            availableSpace: Number(capacity),
+                            timestamp: new Date().toISOString()
+                        }
+                    })
+                });
+
+                if (response.ok) {
+                    alert('Successfully registered as provider!');
+                }
+            } catch (error) {
+                console.error('Error registering provider:', error);
+                alert('Failed to register as provider');
+            }
+        }
+
+        // Upload File
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a file');
+                return;
+            }
+
+            try {
+                // Upload to storage
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('userId', userAddress);
+                formData.append('appSlug', APP_SLUG);
+
+                const response = await fetch('https://r0c8kgwocscg8gsokogwwsw4.zetaverse.one/storage/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer BVmMGkKDhBctRIX0JXVvvUBInHG3'
+                    },
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Store metadata
+                    await fetch('https://r0c8kgwocscg8gsokogwwsw4.zetaverse.one/mongodb', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': 'Bearer BVmMGkKDhBctRIX0JXVvvUBInHG3',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            appSlug: APP_SLUG,
+                            action: 'create',
+                            collection: 'files',
+                            data: {
+                                owner: userAddress,
+                                filename: file.name,
+                                size: file.size,
+                                url: data.url,
+                                timestamp: new Date().toISOString()
+                            }
+                        })
+                    });
+
+                    alert('File uploaded successfully!');
+                    loadUserData();
+                }
+            } catch (error) {
+                console.error('Error uploading file:', error);
+                alert('Failed to upload file');
+            }
+        }
+
+        // Load User Data
+        async function loadUserData() {
+            try {
+                const response = await fetch('https://r0c8kgwocscg8gsokogwwsw4.zetaverse.one/mongodb', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer BVmMGkKDhBctRIX0JXVvvUBInHG3',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        appSlug: APP_SLUG,
+                        action: 'read',
+                        collection: 'files',
+                        conditions: {
+                            owner: userAddress
+                        }
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    updateTransactionHistory(data.result);
+                }
+            } catch (error) {
+                console.error('Error loading user data:', error);
+            }
+        }
+
+        // Update Transaction History
+        function updateTransactionHistory(transactions) {
+            const tbody = document.getElementById('transactionHistory');
+            tbody.innerHTML = '';
+
+            transactions.forEach(tx => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Upload</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${tx.filename}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${(tx.size / 1024 / 1024).toFixed(2)} MB</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                            Completed
+                        </span>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // Event Listeners
+        document.getElementById('connectWallet').addEventListener('click', connectWallet);
+        document.getElementById('registerProvider').addEventListener('click', registerProvider);
+        document.getElementById('uploadButton').addEventListener('click', uploadFile);
+
+        // File Input Drag & Drop
+        const dropZone = document.querySelector('.border-dashed');
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-blue-500');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-blue-500');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-blue-500');
+            document.getElementById('fileInput').files = e.dataTransfer.files;
+        });
+    </script>
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
